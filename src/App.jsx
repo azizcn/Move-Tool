@@ -59,7 +59,8 @@ function MoveSketchBuilder() {
     const [showCode, setShowCode] = useState(false);
     const [generatedCode, setGeneratedCode] = useState("");
     const [generatedToml, setGeneratedToml] = useState("");
-    const [isRunning, setIsRunning] = useState(false);
+    
+    // Silindi: [isRunning, setIsRunning] state'i silindi.
     
     // Rehber state'i kaldırıldı
     const [pendingNode, setPendingNode] = useState(null);
@@ -237,8 +238,6 @@ function MoveSketchBuilder() {
         r.readAsText(f); 
     };
     
-    // Rehber fonksiyonları (startCoinTutorial, startNftTutorial, startGeneralTour) kaldırıldı
-
 const handleExport = () => { 
     const cm = modules.find(m => m.id === activeModuleId); 
     const c = generateMoveCode(cm.name, nodes, edges); 
@@ -246,86 +245,11 @@ const handleExport = () => {
     setGeneratedCode(c); 
     setGeneratedToml(t); 
     setShowCode(true); 
-}; // <-- Burada doğru şekilde kapandı ve bitti!
+}; 
 
-// 🔥 YENİ AI SİMÜLASYON FONKSİYONU 🔥
-const runSimulation = () => { 
-    
-    // API Key Kontrolü
-    if (GEMINI_API_KEY === "AIE") {
-        alert("🚨 HATA: Lütfen koda kendi API Anahtarınızı yapıştırın!");
-        return;
-    }
-    
-    const currentModule = modules.find(m => m.id === activeModuleId);
-    
-    // Mevcut düğüm ve bağlantılardan Move kodunu üret
-    const code = generateMoveCode(currentModule.name, nodes, edges);
+// 🔥 AI SİMÜLASYON FONKSİYONU SİLİNDİ 🔥
+// runSimulation fonksiyonu silindi.
 
-    // AI'a gönderilecek detaylı talimat
-    const simulationPrompt = `
-        You are an expert Sui Move compiler and validator. Your task is to analyze the provided Move code, which was generated from a visual node graph, and determine if it is conceptually valid for deployment on the Sui network.
-
-        **Analyze for the following potential errors:**
-        1.  Resource handling: Are all resource objects (like 'TreasuryCap' or custom structs with 'key' ability) created and handled correctly? Is the 'init' function properly setting up the module?
-        2.  Function signatures: Are public functions correctly using context (e.g., 'TxContext') if they need to sign transactions?
-        3.  Flow logic: Identify any obvious missing steps (e.g., minting a coin but not transferring it, or missing necessary dependencies).
-        
-        **Your response MUST strictly adhere to ONE of these two JSON formats, with NO extra text or markdown (no \`\`\`json):**
-
-        // Format 1: Success
-        {"status": "SUCCESS", "message": "Kodunuz, temel Sui Move kurallarına uygun görünüyor ve dağıtıma hazır."}
-
-        // Format 2: Failure
-        {"status": "FAILURE", "message": "HATA: Fonksiyon parametreleri eksik.", "details": "The 'mint' function requires a '&mut TreasuryCap' but the graph does not show a connection to this resource. (Hata kodu: E102)"}
-
-        **MOVE CODE TO ANALYZE:**
-        ${code}
-    `;
-
-    setIsRunning(true);
-    showToast("🤖 Yapay Zeka simülasyonu başlatıyor...");
-
-    fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: simulationPrompt }] }] })
-    })
-    .then(response => {
-        if (!response.ok) {
-            // HTTP hatası olursa yakala
-            return response.json().then(error => { throw new Error(`API Hatası (HTTP ${response.status}): ${error.error?.message || 'Bilinmeyen Hata'}`); });
-        }
-        return response.json();
-    })
-    .then(result => {
-        let textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!textResponse) {
-            throw new Error("AI, yapılandırılmış bir cevap döndüremedi.");
-        }
-        
-        // AI'dan gelen JSON'u temizle ve ayrıştır
-        textResponse = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsedResult = JSON.parse(textResponse);
-
-        if (parsedResult.status === "SUCCESS") {
-            showToast(`✅ AI: Test Başarılı: ${parsedResult.message}`);
-        } else if (parsedResult.status === "FAILURE") {
-            // Hata detayını göster
-            showToast(`❌ AI: Test Başarısız: ${parsedResult.details || parsedResult.message}`);
-        } else {
-            showToast("⚠️ AI: Beklenmedik sonuç formatı döndü. Analizi kontrol edin.");
-        }
-    })
-    .catch(err => {
-        console.error("AI Simülasyon Hatası:", err);
-        showToast(`🚨 KRİTİK HATA: Simülasyon sırasında bir hata oluştu. (${err.message})`);
-    })
-    .finally(() => {
-        // İşlem bittiğinde yüklenme durumunu kapat
-        setIsRunning(false);
-    });
-};
 
     const addStruct = useCallback(() => setNodes(n => n.concat({ 
         id: getId('s'), 
@@ -333,7 +257,7 @@ const runSimulation = () => {
         position: { x: 300, y: 100 }, 
         data: { 
             label: 'NewStruct', 
-            customTitle: 'Yeni Yapı 📦', 
+            customTitle: 'Yeni Veri 📦', 
             fields: [{ name: 'id', type: 'UID' }],
             // ABILITIES varsayılan değerlerle eklendi
             abilities: {
@@ -378,10 +302,13 @@ const runSimulation = () => {
         }
     }, [reactFlowInstance, setNodes, setEdges]);
     
+    // 💥 DÜZELTME: onSidebarSelect ve onPaneClick Mekanizması Devre Dışı
     const onSidebarSelect = useCallback(() => { 
-    showToast("⚠️ Tıklayarak ekleme şu an devre dışı.");
-}, []);
+        showToast("⚠️ Sidebar'dan ekleme özelliği devre dışı. Lütfen sağ üstteki butonları kullanın.");
+    }, [showToast]);
+
     const onPaneClick = useCallback((event) => { 
+        // pendingNode kontrolü sayesinde onSidebarSelect çalışmadığı sürece bu fonksiyon pasif kalacaktır.
         if (!pendingNode) return; 
         const position = reactFlowInstance.project({ x: event.clientX, y: event.clientY - 40 }); 
         const prefix = pendingNode.type === 'structNode' ? 's' : (pendingNode.type === 'initNode' ? 'i' : 'f'); 
@@ -389,6 +316,7 @@ const runSimulation = () => {
         setNodes((nds) => nds.concat(newNode)); setPendingNode(null); 
         document.body.style.cursor = 'default'; 
     }, [reactFlowInstance, pendingNode, setNodes]);
+    // 💥 DÜZELTME SONU 💥
 
     // --- KRİTİK: BAĞLANTI OLUŞTURMA MANTIĞI (SİLME DÜZELTİLDİ) ---
     const createEdgesFromNodes = useCallback((nodes) => {
@@ -534,7 +462,7 @@ const runSimulation = () => {
                             </div>
 
                             <button onClick={handleExport} style={btnStyle('#10b981')}>🚀 Export</button>
-                            <button onClick={runSimulation} disabled={isRunning} style={btnStyle(isRunning ? '#fbbf24' : '#f59e0b')}>{isRunning ? '⏳' : '▶️ Test'}</button>
+                            {/* SİLİNDİ: <button onClick={runSimulation} disabled={isRunning} style={btnStyle(isRunning ? '#fbbf24' : '#f59e0b')}>{isRunning ? '⏳' : '▶️ Test'}</button> */}
                         </Panel>
                         
                         <Panel position="top-left" style={{ padding: '10px' }}>
