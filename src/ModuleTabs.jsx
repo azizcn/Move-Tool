@@ -26,7 +26,7 @@ export default function ModuleTabs({ modules, activeModuleId, onSwitch, onAdd, o
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <img src={suiLogo} alt="Sui Move Logo" style={{ width: '32px', height: '32px' }} />
         <span className="app-title" style={{ fontSize: '20px', fontWeight: '800', letterSpacing: '-0.5px' }}>
-          Move Sketch
+          Move Skratch
         </span>
       </div>
 
