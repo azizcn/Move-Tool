@@ -18,7 +18,7 @@ import ThemeToggle from './ThemeToggle';
 import { generateMoveCode, generateMoveToml } from './moveGenerator';
 
 // API KEY (Değişken ismi aynı kalmalı)
-const GEMINI_API_KEY = "AIzaSyCkljtBkHGNr58hZkHey70hqC-Thd8pEQc"; 
+const GEMINI_API_KEY = "AIzaSyBybsTiBB7x5ZnywAiIva0oV0wNO95iHSA"; 
 
 const nodeTypesRaw = { structNode: StructNode, functionNode: FunctionNode, initNode: InitNode };
 const edgeTypesRaw = { buttonEdge: ButtonEdge };
