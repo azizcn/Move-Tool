@@ -1,11 +1,10 @@
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import ReactFlow, {
-  MiniMap, Controls, Background, useNodesState, useEdgesState, addEdge, Panel, useReactFlow, ReactFlowProvider
+    MiniMap, Controls, Background, useNodesState, useEdgesState, addEdge, Panel, useReactFlow, ReactFlowProvider
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-import { driver } from "driver.js";
-import "driver.js/dist/driver.css";
+// Driver.js importları (Rehber için gerekliydi, silindi)
 
 import StructNode from './StructNode';
 import FunctionNode from './FunctionNode';
@@ -15,294 +14,558 @@ import EditModal from './EditModal';
 import ModuleTabs from './ModuleTabs';
 import CodeModal from './CodeModal';
 import Sidebar from './Sidebar';
+import ThemeToggle from './ThemeToggle';
 import { generateMoveCode, generateMoveToml } from './moveGenerator';
 
-// Node Tipleri
-const nodeTypesRaw = { 
-  structNode: StructNode, 
-  functionNode: FunctionNode, 
-  initNode: InitNode 
-};
+// API KEY (Değişken ismi aynı kalmalı)
+const GEMINI_API_KEY = "AIzaSyCkljtBkHGNr58hZkHey70hqC-Thd8pEQc"; 
+
+const nodeTypesRaw = { structNode: StructNode, functionNode: FunctionNode, initNode: InitNode };
 const edgeTypesRaw = { buttonEdge: ButtonEdge };
-const getId = (prefix) => `${prefix}-${Date.now()}`;
+const getId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
 
 const getEdgeColor = (type) => {
-  if (!type) return '#64748b'; 
-  const t = type.toLowerCase();
-  if (t.startsWith('u') && !t.includes('id')) return '#3b82f6';
-  if (t === 'address') return '#10b981';
-  if (t === 'bool') return '#f59e0b';
-  if (t.includes('string') || t.includes('url')) return '#ec4899';
-  return '#8b5cf6';
+    if (!type) return '#64748b'; 
+    const t = type.toLowerCase();
+    if (t.startsWith('u') && !t.includes('id')) return '#3b82f6';
+    if (t === 'address') return '#10b981';
+    if (t === 'bool') return '#f59e0b';
+    if (t.includes('string') || t.includes('url')) return '#ec4899';
+    return '#8b5cf6';
 };
-
-// Driver Obj (Global)
-const driverObj = driver({ 
-    showProgress: true, 
-    animate: true, 
-    allowClose: true, 
-    overlayClick: false, 
-    opacity: 0 
-});
+const initialNodes = [
+    {
+        id: 'module-root', // KRİTİK ID
+        type: 'default', // Veya custom bir type
+        position: { x: -100, y: -100 },
+        data: { label: 'my_coin', type: 'moduleName' }, // type: moduleName ekledik
+        hidden: true, // Sahneden gizle
+    }
+];
+// driverObj kaldırıldı
 
 function MoveSketchBuilder() {
-  const reactFlowInstance = useReactFlow();
-  const wrapperRef = useRef(null);
-  const fileInputRef = useRef(null);
+    const reactFlowInstance = useReactFlow();
+    const wrapperRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const codeInputRef = useRef(null);
 
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
-  const [modules, setModules] = useState([{ id: 'mod-1', name: 'my_coin', nodes: [], edges: [] }]);
-  const [activeModuleId, setActiveModuleId] = useState('mod-1');
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [editingNode, setEditingNode] = useState(null);
-  const [showCode, setShowCode] = useState(false);
-  const [generatedCode, setGeneratedCode] = useState("");
-  const [generatedToml, setGeneratedToml] = useState("");
-  const [isRunning, setIsRunning] = useState(false);
-  
-  // 0: Yok, 1-6: Coin, 10-15: NFT
-  const [tutorialStep, setTutorialStep] = useState(0);
-  const [pendingNode, setPendingNode] = useState(null);
-  const [toastMsg, setToastMsg] = useState(null);
-
-  const nodeTypes = useMemo(() => nodeTypesRaw, []);
-  const edgeTypes = useMemo(() => edgeTypesRaw, []);
-
-  // TOAST MESAJI
-  const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
-
-  // --- EĞİTİM GÖZCÜSÜ (COIN & NFT) ---
-  useEffect(() => {
-    if (tutorialStep === 0) return;
+    const [isSidebarOpen, setSidebarOpen] = useState(true);
+    const [modules, setModules] = useState([{ id: 'mod-1', name: 'my_coin', nodes: initialNodes, edges: [] }]);
+    const [activeModuleId, setActiveModuleId] = useState('mod-1');
+    const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+    const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+    const [editingNode, setEditingNode] = useState(null);
+    const [showCode, setShowCode] = useState(false);
+    const [generatedCode, setGeneratedCode] = useState("");
+    const [generatedToml, setGeneratedToml] = useState("");
+    const [isRunning, setIsRunning] = useState(false);
     
-    // FAZ 1: Yetki
-    if (tutorialStep === 1) {
-      if (nodes.some(n => n.data.label === 'TreasuryCap')) {
-        setTutorialStep(2);
-        // ID: #tool-mint (Sidebar'daki ile aynı)
-        driverObj.highlight({ element: '#tool-mint', popover: { title: 'Faz 2: Üretim', description: 'Yönetici yetkisi tanımlandı. Şimdi <b>"Para Bas"</b> fonksiyonunu ekleyiniz.', side: "right" } });
-      }
-    }
-    // FAZ 2: Mint
-    if (tutorialStep === 2) {
-      if (nodes.some(n => n.data.label === 'coin::mint')) {
-        setTutorialStep(3);
-        // ID: #tool-transfer
-        driverObj.highlight({ element: '#tool-transfer', popover: { title: 'Faz 3: Lojistik', description: 'Şimdi <b>"Adrese Gönder"</b> fonksiyonunu ekleyiniz.', side: "right" } });
-      }
-    }
+    // Rehber state'i kaldırıldı
+    const [pendingNode, setPendingNode] = useState(null);
+    const [toastMsg, setToastMsg] = useState(null);
+    const [isAiLoading, setIsAiLoading] = useState(false); 
 
-    // --- COIN REHBERİ ---
-    if (tutorialStep === 1 && nodes.some(n => n.data.label === 'TreasuryCap')) {
-        setTutorialStep(2); 
-        driverObj.highlight({ element: '#tool-coinmint', popover: { title: 'Faz 2: Üretim', description: 'Şimdi <b>"Para Bas"</b> fonksiyonunu sürükleyiniz.', side: "right" } });
-    }
-    if (tutorialStep === 2 && nodes.some(n => n.data.label === 'coin::mint')) {
-        setTutorialStep(3); 
-        driverObj.highlight({ element: '#tool-transfertransfer', popover: { title: 'Faz 3: Lojistik', description: 'Şimdi <b>"Adrese Gönder"</b> fonksiyonunu sürükleyiniz.', side: "right" } });
-    }
-    if (tutorialStep === 3 && nodes.some(n => n.data.label === 'transfer::transfer')) {
-        setTutorialStep(4); 
-        driverObj.highlight({ element: '.react-flow__pane', popover: { title: 'Faz 4: Bağlantı', description: '1. Hazine -> Mint (cap)\n2. Mint -> Transfer (obj)', side: "top" } });
-    }
-    if (tutorialStep === 4) {
-      const mintNode = nodes.find(n => n.data.label === 'coin::mint');
-      const transferNode = nodes.find(n => n.data.label === 'transfer::transfer');
-      const capNode = nodes.find(n => n.data.label === 'TreasuryCap');
-      if (mintNode && transferNode && capNode) {
-        const c1 = edges.some(e => e.source === capNode.id && e.target === mintNode.id && e.targetHandle === 'param-0');
-        const c2 = edges.some(e => e.source === mintNode.id && e.target === transferNode.id && e.sourceHandle === 'return-val' && e.targetHandle === 'param-0');
-        if (c1 && c2) { setTutorialStep(0); driverObj.destroy(); showToast("✅ COIN SİSTEMİ HAZIR!"); }
-      }
-    }
+    const nodeTypes = useMemo(() => nodeTypesRaw, []);
+    const edgeTypes = useMemo(() => edgeTypesRaw, []);
 
-    // --- NFT REHBERİ ---
-    if (tutorialStep === 10) {
-      // ID: #tool-nft-template
-      if (nodes.some(n => n.data.label === 'SimpleNFT')) {
-        setTutorialStep(11);
-        driverObj.highlight({ element: '#tool-nft-mint', popover: { title: 'Adım 2: NFT Darphanesi', description: 'Şimdi <b>"NFT Oluştur"</b> fonksiyonunu ekleyiniz.', side: "right" } });
-      }
-    }
-    if (tutorialStep === 11 && nodes.some(n => n.data.label === 'nft::mint')) {
-        setTutorialStep(12);
-        driverObj.highlight({ element: '#tool-transfertransfer', popover: { title: 'Adım 3: Teslimat', description: 'Şimdi <b>"Adrese Gönder"</b> fonksiyonunu ekleyiniz.', side: "right" } });
-    }
-    if (tutorialStep === 12 && nodes.some(n => n.data.label === 'transfer::transfer')) {
-        setTutorialStep(13);
-        driverObj.highlight({ element: '.react-flow__pane', popover: { title: 'Adım 4: Bağlantı', description: 'NFT Mint Çıkışını -> Transfer (obj) girişine bağlayınız.', side: "top" } });
-    }
-    if (tutorialStep === 13) {
-        const mintNode = nodes.find(n => n.data.label === 'nft::mint');
-        const transferNode = nodes.find(n => n.data.label === 'transfer::transfer');
-        if (mintNode && transferNode) {
-            const c1 = edges.some(e => e.source === mintNode.id && e.target === transferNode.id && e.sourceHandle === 'return-val' && e.targetHandle === 'param-0');
-            if (c1) { setTutorialStep(0); driverObj.destroy(); showToast("✅ NFT SİSTEMİ HAZIR!"); }
-        }
-    }
+    const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
 
-  }, [nodes, edges, tutorialStep]);
-
-  // --- SÜRÜKLE BIRAK (DROP) - GARANTİLİ ---
-  const onDragOver = useCallback((event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }, []);
-  const onDrop = useCallback((event) => {
-    event.preventDefault();
-    const dataString = event.dataTransfer.getData('text/plain');
-    if (!dataString) return;
-
-    try {
-      const { type, data } = JSON.parse(dataString);
-      
-      let position = { x: 250, y: 250 }; // Varsayılan konum
-      if (reactFlowInstance && wrapperRef.current) {
-        const bounds = wrapperRef.current.getBoundingClientRect();
-        // Koordinatları güvenli hesapla
-        const projected = reactFlowInstance.project({ 
-            x: event.clientX - bounds.left, 
-            y: event.clientY - bounds.top 
-        });
-        if (projected.x && projected.y) position = projected;
-      }
-      
-      const prefix = type === 'structNode' ? 's' : (type === 'initNode' ? 'i' : 'f');
-      const newNode = { id: getId(prefix), type, position, data };
-      setNodes((nds) => nds.concat(newNode));
-    } catch (e) { console.error("Drop hatası:", e); }
-  }, [reactFlowInstance, setNodes]);
-
-  // --- TIKLA EKLE (YEDEK) ---
-  const onSidebarSelect = useCallback((type, data) => { setPendingNode({ type, data }); document.body.style.cursor = 'copy'; showToast("Öğe seçildi. Sahneye tıklayınız."); }, []);
-  const onPaneClick = useCallback((event) => {
-    if (!pendingNode) return;
-    const position = reactFlowInstance.project({ x: event.clientX, y: event.clientY - 40 });
-    const prefix = pendingNode.type === 'structNode' ? 's' : (pendingNode.type === 'initNode' ? 'i' : 'f');
-    const newNode = { id: getId(prefix), type: pendingNode.type, position, data: pendingNode.data };
-    setNodes((nds) => nds.concat(newNode)); setPendingNode(null); document.body.style.cursor = 'default';
-  }, [reactFlowInstance, pendingNode, setNodes]);
-
-  // --- BAĞLANTI (GÜVENLİK) ---
-  const onConnect = useCallback((params) => {
-    if (tutorialStep === 4) { // Coin kontrolü
-        const s = reactFlowInstance.getNode(params.source);
-        const t = reactFlowInstance.getNode(params.target);
-        const v1 = s.data.label === 'TreasuryCap' && t.data.label === 'coin::mint';
-        const v2 = s.data.label === 'coin::mint' && t.data.label === 'transfer::transfer';
-        if (!v1 && !v2) { showToast("⚠️ Rehbere uyunuz."); return; }
-    }
-    if (tutorialStep === 13) { // NFT kontrolü
-        const s = reactFlowInstance.getNode(params.source);
-        const t = reactFlowInstance.getNode(params.target);
-        if (!(s.data.label === 'nft::mint' && t.data.label === 'transfer::transfer')) { showToast("⚠️ Rehbere uyunuz."); return; }
-    }
+    // --- REHBER KONTROLLERİ useEffect'i kaldırıldı ---
     
-    const sourceNode = reactFlowInstance.getNode(params.source);
-    let dataType = 'unknown';
-    if (sourceNode) {
-        if (params.sourceHandle === 'obj-main') dataType = sourceNode.data.label;
-        else if (params.sourceHandle === 'return-val') dataType = 'FunctionResult';
-        else if (params.sourceHandle?.startsWith('field-')) {
-            const idx = parseInt(params.sourceHandle.split('-')[1]);
-            if (sourceNode.data.fields?.[idx]) dataType = sourceNode.data.fields[idx].type;
+    // --- 🔥 KOD IMPORT FONKSİYONU ---
+    const handleCodeImport = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (GEMINI_API_KEY === "A") {
+            alert("🚨 HATA: Lütfen Koda YENİ ve GEÇERLİ API Anahtarınızı yapıştırın!");
+            return;
         }
-    }
-    const color = getEdgeColor(dataType);
-    setEdges((eds) => addEdge({ ...params, type: 'buttonEdge', animated: true, style: { stroke: color, strokeWidth: 2 } }, eds));
-  }, [reactFlowInstance, setEdges, tutorialStep]);
 
-  // Buton İşlevleri
-  const startCoinTutorial = () => {
-    if(confirm("Coin eğitimi başlatılsın mı?")) {
-        setNodes([]); setEdges([]); setSidebarOpen(true); setTutorialStep(1);
-        // ID: #tool-treasury
-        driverObj.highlight({ element: '#tool-treasury', popover: { title: 'Faz 1: Yetki', description: 'Hazine Anahtarını sürükleyiniz.', side: "right" } });
-    }
-  };
-  const startNftTutorial = () => { if(confirm("NFT eğitimi başlatılsın mı?")) { setNodes([]); setEdges([]); setSidebarOpen(true); setTutorialStep(10); driverObj.highlight({ element: '#tool-SimpleNFT', popover: { title: 'Adım 1: NFT Tasarımı', description: 'NFT Şablonunu sürükleyiniz.', side: "right" } }); } };
-  const startGeneralTour = () => { setSidebarOpen(true); const d = driver({ showProgress: true, animate: true, opacity: 0, steps: [{ element: '#sidebar-panel', popover: { title: 'Araç Paneli', description: 'Buradan alınız.' } }] }); d.drive(); };
-  
-  const syncCurrentModule = () => { const cn = reactFlowInstance.getNodes(); const ce = reactFlowInstance.getEdges(); setModules(p => p.map(m => m.id === activeModuleId ? { ...m, nodes: cn, edges: ce } : m)); };
-  const switchModule = (tid) => { if (tid === activeModuleId) return; syncCurrentModule(); const tm = modules.find(m => m.id === tid); if (tm) { setNodes(tm.nodes || []); setEdges(tm.edges || []); setActiveModuleId(tid); } };
-  const addNewModule = () => { syncCurrentModule(); const nid = `mod-${Date.now()}`; setModules(p => [...p, { id: nid, name: `module_${modules.length + 1}`, nodes: [], edges: [] }]); setNodes([]); setEdges([]); setActiveModuleId(nid); };
-  const renameModule = (id, nn) => setModules(p => p.map(m => m.id === id ? { ...m, name: nn } : m));
-  const deleteModule = (mid) => { if (modules.length <= 1) { showToast("Son modül silinemez."); return; } if (!confirm("Silinsin mi?")) return; const nm = modules.filter(m => m.id !== mid); setModules(nm); if (activeModuleId === mid) { setActiveModuleId(nm[0].id); setNodes(nm[0].nodes || []); setEdges(nm[0].edges || []); } };
-  const saveProject = () => { const cn = reactFlowInstance.getNodes(); const ce = reactFlowInstance.getEdges(); const fm = modules.map(m => m.id === activeModuleId ? { ...m, nodes: cn, edges: ce } : m); const b = new Blob([JSON.stringify({ version: "1.0", modules: fm }, null, 2)], { type: 'application/json' }); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = `move_project.json`; a.click(); showToast("💾 Kaydedildi."); };
-  const loadProject = (e) => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = (ev) => { try { const d = JSON.parse(ev.target.result); if (!d.modules) return; setModules(d.modules); setActiveModuleId(d.modules[0].id); setNodes(d.modules[0].nodes || []); setEdges(d.modules[0].edges || []); showToast("📂 Yüklendi."); } catch (err) { alert("Hata."); } }; r.readAsText(f); };
-  const handleExport = () => { const cm = modules.find(m => m.id === activeModuleId); const c = generateMoveCode(cm.name, nodes, edges); const t = generateMoveToml(cm.name); setGeneratedCode(c); setGeneratedToml(t); setShowCode(true); };
-  const runSimulation = () => { setIsRunning(true); setTimeout(() => { setIsRunning(false); showToast("✅ Simülasyon başarılı."); }, 1500); };
-  const isValidConnection = useCallback((c) => c.source !== c.target, []);
-  const addStruct = useCallback(() => setNodes(n => n.concat({ id: getId('s'), type: 'structNode', position: { x: 300, y: 100 }, data: { label: 'New', customTitle: 'Yeni', fields: [] } })), [setNodes]);
-  const addFunction = useCallback(() => setNodes(n => n.concat({ id: getId('f'), type: 'functionNode', position: { x: 500, y: 100 }, data: { label: 'new', customTitle: 'Yeni', params: [] } })), [setNodes]);
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            const code = ev.target.result;
+            setIsAiLoading(true);
+            showToast("🤖 Yapay Zeka kodu inceliyor...");
 
-  const btnStyle = (bg) => ({ background: bg, color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' });
-  const darkBtnStyle = { ...btnStyle('#334155'), border: '1px solid #475569' };
-
-  return (
-    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".json" onChange={loadProject} />
-      
-      <div style={{ flexShrink: 0 }}>
-        <ModuleTabs modules={modules} activeModuleId={activeModuleId} onSwitch={switchModule} onAdd={addNewModule} onRename={renameModule} onDelete={deleteModule} />
-      </div>
-      
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
-        {isSidebarOpen && <Sidebar onClose={() => setSidebarOpen(false)} onSelect={onSidebarSelect} />}
-
-        <div 
-            className="reactflow-wrapper" 
-            ref={wrapperRef} 
-            style={{ flex: 1, height: '100%', position: 'relative' }}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-        >
-          <ReactFlow
-            nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-            onConnect={onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
-            isValidConnection={isValidConnection} onNodeDoubleClick={(e, node) => setEditingNode(node)} onPaneClick={onPaneClick}
-            fitView
-          >
-            <Controls />
-            <MiniMap style={{ height: 100, width: 150 }} />
-            <Background variant="dots" gap={12} size={1} />
+            try {
+                const prompt = `
+            You are an expert in Sui Move and React Flow visualization. Analyze the following Move code and convert it into a valid JSON structure for a React Flow graph. Your goal is to recreate all necessary content and connections.
             
-            <Panel position="top-right" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', padding: '10px' }}>
-               <button onClick={startCoinTutorial} style={{...btnStyle('#f59e0b')}}>🪙 Coin Rehberi</button>
-               <button onClick={startNftTutorial} style={{...btnStyle('#ec4899')}}>🖼️ NFT Rehberi</button>
-               <button onClick={startGeneralTour} style={{...btnStyle('#6366f1')}}>❓ Site Turu</button>
-               <div style={{ display: 'flex', gap: '5px' }}>
-                <button onClick={() => fileInputRef.current.click()} style={{...btnStyle('#334155')}}>📂</button>
-                <button onClick={saveProject} style={{...btnStyle('#334155')}}>💾</button>
-              </div>
-              <button onClick={addStruct} style={btnStyle('#3b82f6')}>+ Struct</button>
-              <button onClick={addFunction} style={btnStyle('#8b5cf6')}>+ Fonksiyon</button>
-              <button onClick={handleExport} style={btnStyle('#10b981')}>🚀 Export</button>
-              <button onClick={runSimulation} disabled={isRunning} style={btnStyle(isRunning ? '#fbbf24' : '#f59e0b')}>{isRunning ? '⏳' : '▶️ Test'}</button>
-            </Panel>
+            CODE:
+            ${code}
 
-            <Panel position="top-left" style={{ padding: '10px' }}>
-              {!isSidebarOpen && <button onClick={() => setSidebarOpen(true)} style={btnStyle('#334155')}>🛠️ Menü</button>}
-            </Panel>
+            RULES:
+            1. Identify all 'struct' definitions. For these, set type='structNode'. Extract fields and parameters (name/type) into the 'data.fields' array.
+            2. Identify all 'fun' definitions (ignore 'init'). For these, set type='functionNode'. Extract parameters (name/type) into the 'data.params' array.
+            3. FRAMEWORK CRITICAL TYPES: If 'TreasuryCap' or 'Coin' is found in any function signature, you MUST create a corresponding node for it (type='structNode') with data.label as the type name, regardless of whether it is defined as a struct in the code.
+            4. CONNECTION LOGIC (EDGES): You must analyze parameter types and code flow to infer the data flow.
+                - CRITICAL MINT/BURN: For 'coin::mint' or 'coin::burn' functions, the 'TreasuryCap' node must connect to the function node's 'param-0' handle (assuming 'cap' is param 0).
+                - Generic Flow: Create an edge from a Struct Node (Source) to a Function Node (Target) if the Function takes that Struct type as a parameter.
+            5. Layout: Structs on x:100, Functions on x:600.
+            6. Return ONLY raw JSON. Do not include any markdown (like \`\`\`json) or conversational text.
+            `;
 
-          </ReactFlow>
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+
+                if (!response.ok) {
+                    const errorResult = await response.json();
+                    throw new Error(`API Hatası (HTTP ${response.status}): ${errorResult.error?.message || 'Bilinmeyen Hata'}`);
+                }
+
+                const result = await response.json();
+                
+                if (!result.candidates || result.candidates.length === 0 || !result.candidates[0].content || !result.candidates[0].content.parts || result.candidates[0].content.parts.length === 0) {
+                    throw new Error("AI, yapılandırılmış bir cevap döndüremedi.");
+                }
+                
+                let textResponse = result.candidates[0].content.parts[0].text;
+                
+                textResponse = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+                
+                const parsedData = JSON.parse(textResponse);
+
+                // AI'dan gelen veriye otomatik bağlantıları ekle
+                const autoEdges = createEdgesFromNodes(parsedData.nodes);
+                const finalEdges = [...parsedData.edges, ...autoEdges];
+
+                if (parsedData.nodes && parsedData.nodes.length > 0) {
+                    if(confirm(`🤖 AI: "${parsedData.nodes.length} yapı ve ${finalEdges.length} bağlantı buldum."\nİçe aktarılsın mı?`)) {
+                        setNodes(parsedData.nodes);
+                        setEdges(finalEdges); // Otomatik bağlantılar dahil edildi
+                        showToast("✅ AI: Sahne kuruldu!");
+                    }
+                } else {
+                    alert("AI, kodda beklenen yapıları bulamadı.");
+                }
+
+            } catch (err) {
+                console.error("AI/JSON Hatası:", err);
+                alert("🚨 KRİTİK HATA: " + err.message + "\nLütfen API Key'in geçerli olduğundan ve hesap limitini aşmadığınızdan emin olun.");
+            } finally {
+                setIsAiLoading(false);
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    };
+    
+    // --- YÖNETİM FONKSİYONLARI ---
+    const syncCurrentModule = () => { 
+        const cn = reactFlowInstance.getNodes(); 
+        const ce = reactFlowInstance.getEdges(); 
+        setModules(p => p.map(m => m.id === activeModuleId ? { ...m, nodes: cn, edges: ce } : m)); 
+    };
+    const clearCanvas = () => {
+        // Emin misin sorusuyla kazaların önüne geçelim
+        if (!confirm("⚠️ SAHNEYİ SİLMEK ÜZERESİN. Tüm düğüm ve bağlantıları silmek istediğine emin misin?")) {
+            return;
+        }
+
+        // 1. Aktif modülün kaydedilmiş verilerini sıfırla
+        setModules(p => p.map(m => m.id === activeModuleId ? { ...m, nodes: initialNodes, edges: [] } : m)); 
+        
+        // 2. Sahnede görünen düğüm ve bağlantı state'lerini sıfırla
+        setNodes(initialNodes); // Sadece root düğümünü bırak
+        setEdges([]);
+        
+        showToast("🧹 Sahne Temizlendi.");
+    };
+    const switchModule = (tid) => { 
+        if (tid === activeModuleId) return; 
+        syncCurrentModule(); 
+        const tm = modules.find(m => m.id === tid); 
+        if (tm) { 
+            setNodes(tm.nodes || initialNodes); // Modül geçişinde initialNodes'u kullan
+            setEdges(tm.edges || []); 
+            setActiveModuleId(tid); 
+        } 
+    };
+    const addNewModule = () => { 
+        syncCurrentModule(); 
+        const nid = `mod-${Date.now()}`; 
+        // Yeni modül eklerken de initialNodes ile başla
+        setModules(p => [...p, { id: nid, name: `module_${modules.length + 1}`, nodes: initialNodes, edges: [] }]); 
+        setNodes(initialNodes); 
+        setEdges([]); 
+        setActiveModuleId(nid); 
+    };
+    const renameModule = (id, nn) => setModules(p => p.map(m => m.id === id ? { ...m, name: nn } : m));
+    const deleteModule = (mid) => { 
+        if (modules.length <= 1) { showToast("Son modül silinemez."); return; } 
+        if (!confirm("Sil?")) return; 
+        const nm = modules.filter(m => m.id !== mid); 
+        setModules(nm); 
+        if (activeModuleId === mid) { 
+            setActiveModuleId(nm[0].id); 
+            setNodes(nm[0].nodes || initialNodes); 
+            setEdges(nm[0].edges || []); 
+        } 
+    };
+    const saveProject = () => { 
+        const cn = reactFlowInstance.getNodes(); 
+        const ce = reactFlowInstance.getEdges(); 
+        const fm = modules.map(m => m.id === activeModuleId ? { ...m, nodes: cn, edges: ce } : m); 
+        const b = new Blob([JSON.stringify({ version: "1.0", modules: fm }, null, 2)], { type: 'application/json' }); 
+        const u = URL.createObjectURL(b); 
+        const a = document.createElement('a'); 
+        a.href = u; 
+        a.download = `move_project.json`; 
+        a.click(); 
+        showToast("💾 Kaydedildi."); 
+    };
+    const loadProject = (e) => { 
+        const f = e.target.files[0]; 
+        if (!f) return; 
+        const r = new FileReader(); 
+        r.onload = (ev) => { 
+            try { 
+                const d = JSON.parse(ev.target.result); 
+                if (!d.modules) return; 
+                setModules(d.modules); 
+                setActiveModuleId(d.modules[0].id); 
+                setNodes(d.modules[0].nodes || initialNodes); 
+                setEdges(d.modules[0].edges || []); 
+                showToast("📂 Yüklendi."); 
+            } catch (err) { alert("Hata."); } 
+        }; 
+        r.readAsText(f); 
+    };
+    
+    // Rehber fonksiyonları (startCoinTutorial, startNftTutorial, startGeneralTour) kaldırıldı
+
+const handleExport = () => { 
+    const cm = modules.find(m => m.id === activeModuleId); 
+    const c = generateMoveCode(cm.name, nodes, edges); 
+    const t = generateMoveToml(cm.name); 
+    setGeneratedCode(c); 
+    setGeneratedToml(t); 
+    setShowCode(true); 
+}; // <-- Burada doğru şekilde kapandı ve bitti!
+
+// 🔥 YENİ AI SİMÜLASYON FONKSİYONU 🔥
+const runSimulation = () => { 
+    
+    // API Key Kontrolü
+    if (GEMINI_API_KEY === "AIE") {
+        alert("🚨 HATA: Lütfen koda kendi API Anahtarınızı yapıştırın!");
+        return;
+    }
+    
+    const currentModule = modules.find(m => m.id === activeModuleId);
+    
+    // Mevcut düğüm ve bağlantılardan Move kodunu üret
+    const code = generateMoveCode(currentModule.name, nodes, edges);
+
+    // AI'a gönderilecek detaylı talimat
+    const simulationPrompt = `
+        You are an expert Sui Move compiler and validator. Your task is to analyze the provided Move code, which was generated from a visual node graph, and determine if it is conceptually valid for deployment on the Sui network.
+
+        **Analyze for the following potential errors:**
+        1.  Resource handling: Are all resource objects (like 'TreasuryCap' or custom structs with 'key' ability) created and handled correctly? Is the 'init' function properly setting up the module?
+        2.  Function signatures: Are public functions correctly using context (e.g., 'TxContext') if they need to sign transactions?
+        3.  Flow logic: Identify any obvious missing steps (e.g., minting a coin but not transferring it, or missing necessary dependencies).
+        
+        **Your response MUST strictly adhere to ONE of these two JSON formats, with NO extra text or markdown (no \`\`\`json):**
+
+        // Format 1: Success
+        {"status": "SUCCESS", "message": "Kodunuz, temel Sui Move kurallarına uygun görünüyor ve dağıtıma hazır."}
+
+        // Format 2: Failure
+        {"status": "FAILURE", "message": "HATA: Fonksiyon parametreleri eksik.", "details": "The 'mint' function requires a '&mut TreasuryCap' but the graph does not show a connection to this resource. (Hata kodu: E102)"}
+
+        **MOVE CODE TO ANALYZE:**
+        ${code}
+    `;
+
+    setIsRunning(true);
+    showToast("🤖 Yapay Zeka simülasyonu başlatıyor...");
+
+    fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: simulationPrompt }] }] })
+    })
+    .then(response => {
+        if (!response.ok) {
+            // HTTP hatası olursa yakala
+            return response.json().then(error => { throw new Error(`API Hatası (HTTP ${response.status}): ${error.error?.message || 'Bilinmeyen Hata'}`); });
+        }
+        return response.json();
+    })
+    .then(result => {
+        let textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!textResponse) {
+            throw new Error("AI, yapılandırılmış bir cevap döndüremedi.");
+        }
+        
+        // AI'dan gelen JSON'u temizle ve ayrıştır
+        textResponse = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsedResult = JSON.parse(textResponse);
+
+        if (parsedResult.status === "SUCCESS") {
+            showToast(`✅ AI: Test Başarılı: ${parsedResult.message}`);
+        } else if (parsedResult.status === "FAILURE") {
+            // Hata detayını göster
+            showToast(`❌ AI: Test Başarısız: ${parsedResult.details || parsedResult.message}`);
+        } else {
+            showToast("⚠️ AI: Beklenmedik sonuç formatı döndü. Analizi kontrol edin.");
+        }
+    })
+    .catch(err => {
+        console.error("AI Simülasyon Hatası:", err);
+        showToast(`🚨 KRİTİK HATA: Simülasyon sırasında bir hata oluştu. (${err.message})`);
+    })
+    .finally(() => {
+        // İşlem bittiğinde yüklenme durumunu kapat
+        setIsRunning(false);
+    });
+};
+
+    const addStruct = useCallback(() => setNodes(n => n.concat({ 
+        id: getId('s'), 
+        type: 'structNode', 
+        position: { x: 300, y: 100 }, 
+        data: { 
+            label: 'NewStruct', 
+            customTitle: 'Yeni Yapı 📦', 
+            fields: [{ name: 'id', type: 'UID' }],
+            // ABILITIES varsayılan değerlerle eklendi
+            abilities: {
+                key: true,
+                store: true,
+                drop: false,
+                copy: false,
+            }
+        } 
+    })), [setNodes]);
+    const addFunction = useCallback(() => setNodes(n => n.concat({ id: getId('f'), type: 'functionNode', position: { x: 500, y: 100 }, data: { label: 'new_action', customTitle: 'Yeni İşlem ⚡', params: [{ name: 'ctx', type: '&mut TxContext' }] } })), [setNodes]);
+
+    const onDragOver = useCallback((event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }, []);
+    
+    const onDrop = useCallback((event) => {
+        event.preventDefault();
+        const dataString = event.dataTransfer.getData('text/plain'); 
+        if (!dataString) return;
+
+        try {
+            const payload = JSON.parse(dataString);
+            const position = reactFlowInstance.project({ 
+                x: event.clientX - wrapperRef.current.getBoundingClientRect().left, 
+                y: event.clientY - wrapperRef.current.getBoundingClientRect().top
+            });
+            
+            if (payload.type === 'template') {
+                setNodes(payload.data.nodes);
+                setEdges(payload.data.edges);
+                showToast("✅ Hazır şablon yüklendi!");
+                return;
+            }
+            
+            const { type, data } = payload;
+            const prefix = type === 'structNode' ? 's' : (type === 'initNode' ? 'i' : 'f');
+            const newNode = { id: getId(prefix), type, position, data };
+            setNodes((nds) => nds.concat(newNode));
+
+        } catch (e) { 
+            console.error("Drop hatası:", e); 
+            showToast("⚠️ Hatalı veri transferi!");
+        }
+    }, [reactFlowInstance, setNodes, setEdges]);
+    
+    const onSidebarSelect = useCallback(() => { 
+    showToast("⚠️ Tıklayarak ekleme şu an devre dışı.");
+}, []);
+    const onPaneClick = useCallback((event) => { 
+        if (!pendingNode) return; 
+        const position = reactFlowInstance.project({ x: event.clientX, y: event.clientY - 40 }); 
+        const prefix = pendingNode.type === 'structNode' ? 's' : (pendingNode.type === 'initNode' ? 'i' : 'f'); 
+        const newNode = { id: getId(prefix), type: pendingNode.type, position, data: pendingNode.data }; 
+        setNodes((nds) => nds.concat(newNode)); setPendingNode(null); 
+        document.body.style.cursor = 'default'; 
+    }, [reactFlowInstance, pendingNode, setNodes]);
+
+    // --- KRİTİK: BAĞLANTI OLUŞTURMA MANTIĞI (SİLME DÜZELTİLDİ) ---
+    const createEdgesFromNodes = useCallback((nodes) => {
+        const newEdges = [];
+        const getStructs = (label) => nodes.filter(n => n.type === 'structNode' && n.data.label === label);
+        const getFuncs = (label) => nodes.filter(n => n.type === 'functionNode' && n.data.label === label);
+
+        const mintFuncs = getFuncs('coin::mint');
+        const transferFuncs = getFuncs('transfer::transfer');
+        const treasuryCaps = getStructs('TreasuryCap');
+
+        // 1. MINT -> TREASURYCAP (Yetkilendirme)
+        mintFuncs.forEach(mintNode => {
+            if (treasuryCaps.length > 0) {
+                const capNode = treasuryCaps[0];
+                const type = '&mut TreasuryCap';
+                newEdges.push({
+                    id: `e-${capNode.id}-${mintNode.id}-cap`,
+                    source: capNode.id, sourceHandle: 'obj-main',
+                    target: mintNode.id, targetHandle: 'param-0',
+                    type: 'buttonEdge', animated: true, 
+                    data: { path: 'smoothstep' }, // Silme için gerekli data objesi
+                    style: { stroke: getEdgeColor(type), strokeWidth: 2 } 
+                });
+            }
+        });
+        
+        // 2. MINT -> TRANSFER (Akış)
+        mintFuncs.forEach(mintNode => {
+            transferFuncs.forEach(transferNode => {
+                const type = 'Coin';
+                newEdges.push({
+                    id: `e-${mintNode.id}-${transferNode.id}-flow`,
+                    source: mintNode.id, sourceHandle: 'return-val',
+                    target: transferNode.id, targetHandle: 'param-0',
+                    type: 'buttonEdge', animated: true, 
+                    data: { path: 'smoothstep' }, // Silme için gerekli data objesi
+                    style: { stroke: getEdgeColor(type), strokeWidth: 2 }
+                });
+            });
+        });
+
+        // 3. NFT MINT -> TRANSFER (NFT Akışı)
+        getFuncs('nft::mint').forEach(nftMintNode => {
+            transferFuncs.forEach(transferNode => {
+                const type = 'SimpleNFT';
+                newEdges.push({
+                    id: `e-${nftMintNode.id}-${transferNode.id}-nftflow`,
+                    source: nftMintNode.id, sourceHandle: 'return-val',
+                    target: transferNode.id, targetHandle: 'param-0',
+                    type: 'buttonEdge', animated: true, 
+                    data: { path: 'smoothstep' }, // Silme için gerekli data objesi
+                    style: { stroke: getEdgeColor(type), strokeWidth: 2 }
+                });
+            });
+        });
+
+        return newEdges;
+    }, [nodes]);
+
+    const onConnect = useCallback((params) => {
+        // Rehber kontrolü kaldırıldı
+        const sourceNode = reactFlowInstance.getNode(params.source);
+        let dataType = 'unknown';
+        if (sourceNode) {
+            if (params.sourceHandle === 'obj-main') dataType = sourceNode.data.label;
+            else if (params.sourceHandle === 'return-val') dataType = 'FunctionResult';
+            else if (params.sourceHandle?.startsWith('field-')) {
+                const idx = parseInt(params.sourceHandle.split('-')[1]);
+                if (sourceNode.data.fields?.[idx]) dataType = sourceNode.data.fields[idx].type;
+            }
+        }
+        const color = getEdgeColor(dataType);
+        setEdges((eds) => addEdge({ 
+            ...params, 
+            type: 'buttonEdge', 
+            animated: true, 
+            data: { path: 'smoothstep' }, // KRİTİK: BURADA YUMUŞAK YOL ZORLANIYOR
+            style: { stroke: color, strokeWidth: 2 } 
+        }, eds));
+    }, [reactFlowInstance, setEdges]);
+    
+    const btnStyle = (bg) => ({ background: bg, color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' });
+
+    return (
+        <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".json" onChange={loadProject} />
+            <input type="file" ref={codeInputRef} style={{ display: 'none' }} accept=".move" onChange={handleCodeImport} />
+            
+            <div style={{ flexShrink: 0 }}>
+                <ModuleTabs modules={modules} activeModuleId={activeModuleId} onSwitch={switchModule} onAdd={addNewModule} onRename={renameModule} onDelete={deleteModule} />
+            </div>
+            
+            <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+                
+                {isSidebarOpen && <Sidebar onClose={() => setSidebarOpen(false)} onSelect={onSidebarSelect} />}
+
+                <div className="reactflow-wrapper" ref={wrapperRef} style={{ flex: 1, height: '100%', position: 'relative' }} onDragOver={onDragOver} onDrop={onDrop}>
+                    <ReactFlow
+                nodes={nodes} 
+                edges={edges} 
+                onNodesChange={onNodesChange} 
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect} 
+                nodeTypes={nodeTypes} 
+                edgeTypes={edgeTypes}
+                isValidConnection={() => true} 
+                
+                // 💥 DÜZELTİLMİŞ BÖLÜM 💥
+                onNodeDoubleClick={(e, node) => {
+                // Sadece Modül Adı Düğümünü veya yeni eklenen Struct/Function düğümlerini hedefle
+                if (
+                    node.id === 'module-root' || // <-- Yeni eklenen ID
+                    node.type === 'structNode' || // <-- Yeni struct'ları düzenlemek için
+                    node.type === 'functionNode' || // <-- Yeni fonksiyonları düzenlemek için
+                    node.type === 'initNode' // <-- init düğümlerini düzenlemek için
+                ) {
+                    console.log("Düzenleme Tetiklendi:", node.id); 
+                    setEditingNode(node);
+                }
+            }}
+                
+                onPaneClick={onPaneClick}
+                fitView
+            >
+                        <Controls /><MiniMap style={{ height: 100, width: 150 }} /><Background variant="dots" gap={12} size={1} />
+                        
+                        {/* --- BUTONLAR --- */}
+                        <Panel position="top-right" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', padding: '10px' }}>
+                            {/* Rehber butonları kaldırıldı */}
+                            
+                            <div id="file-btns" style={{ display: 'flex', gap: '5px' }}>
+                            <button onClick={() => fileInputRef.current.click()} style={{...btnStyle('#334155')}} title="Proje Aç">📂</button>
+                            <button onClick={saveProject} style={{...btnStyle('#334155')}} title="Kaydet">💾</button>
+                            <button onClick={() => codeInputRef.current.click()} style={{...btnStyle('#6366f1')}} title="Kod Oku">📥 Kod (AI)</button>
+                            {/* 💥 TEMİZLEME BUTONU 💥 */}
+                            <button onClick={clearCanvas} style={btnStyle('#ef4444')} title="Sahneyi Temizle">🧹</button>
+                            </div>
+
+                            <div id="manual-btns" style={{ display: 'flex', gap: '5px' }}>
+                                <button onClick={addStruct} style={btnStyle('#3b82f6')}>+ Struct</button>
+                                <button onClick={addFunction} style={btnStyle('#8b5cf6')}>+ Fonksiyon</button>
+                            </div>
+
+                            <button onClick={handleExport} style={btnStyle('#10b981')}>🚀 Export</button>
+                            <button onClick={runSimulation} disabled={isRunning} style={btnStyle(isRunning ? '#fbbf24' : '#f59e0b')}>{isRunning ? '⏳' : '▶️ Test'}</button>
+                        </Panel>
+                        
+                        <Panel position="top-left" style={{ padding: '10px' }}>
+                            {!isSidebarOpen && <button onClick={() => setSidebarOpen(true)} style={btnStyle('#334155')}>🛠️ Menü</button>}
+                        </Panel>
+
+                    </ReactFlow>
+                </div>
+            </div>
+            {/* Modallar, Toast, vs. */}
+            {toastMsg && (
+                <div style={{ 
+                    position: 'fixed', bottom: '20px', left: '20px', zIndex: 999999, 
+                    background: 'var(--item-bg)', 
+                    color: 'var(--text-color)', 
+                    padding: '12px 20px', 
+                    borderRadius: '8px', 
+                    boxShadow: '0 4px 15px rgba(0,0,0,0.3)', 
+                    fontSize: '14px', 
+                    fontWeight: 'bold', 
+                    borderLeft: '5px solid #3b82f6', 
+                    animation: 'fadeIn 0.3s ease-in-out' 
+                }}>
+                    {toastMsg}
+                </div>
+            )}
+            {editingNode && <EditModal node={editingNode} onSave={(u) => { setNodes(n => n.map(x => x.id === u.id ? u : x)); setEditingNode(null); }} onDelete={(id) => { setNodes(n => n.filter(x => x.id !== id)); setEditingNode(null); }} onCancel={() => setEditingNode(null)} />}
+            {showCode && <CodeModal code={generatedCode} toml={generatedToml} onClose={() => setShowCode(false)} onToast={showToast} />}
+            <ThemeToggle />
         </div>
-      </div>
-
-      {toastMsg && (
-        <div style={{
-          position: 'fixed', bottom: '20px', left: '20px', zIndex: 999999,
-          background: 'white', color: '#1e293b', padding: '12px 20px',
-          borderRadius: '8px', boxShadow: '0 4px 15px rgba(0,0,0,0.15)',
-          fontSize: '14px', fontWeight: 'bold', borderLeft: '5px solid #3b82f6',
-          animation: 'fadeIn 0.3s ease-in-out'
-        }}>
-          {toastMsg}
-        </div>
-      )}
-
-      {editingNode && <EditModal node={editingNode} onSave={(u) => { setNodes(n => n.map(x => x.id === u.id ? u : x)); setEditingNode(null); }} onDelete={(id) => { setNodes(n => n.filter(x => x.id !== id)); setEditingNode(null); }} onCancel={() => setEditingNode(null)} />}
-      {showCode && <CodeModal code={generatedCode} toml={generatedToml} onClose={() => setShowCode(false)} onToast={showToast} />}
-    </div>
-  );
+    );
 }
 
 export default function App() { return <ReactFlowProvider><MoveSketchBuilder /></ReactFlowProvider>; }

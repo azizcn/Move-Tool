@@ -1,135 +1,137 @@
 /* --- TEMEL AYARLAR --- */
 body, html, #root {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  transition: background-color 0.3s, color 0.3s;
 }
 
-/* --- REHBER (DRIVER.JS) KİLİDİNİ KIRMA --- */
-
-/* 1. Siyah perdeyi ve sahne vurgusunu tamamen YOK ET */
-/* display: none ile DOM'dan siliyoruz ki fareye engel olmasın */
-.driver-overlay, 
-.driver-stage,
-#driver-page-overlay {
-  display: none !important;
-  opacity: 0 !important;
-  width: 0 !important;
-  height: 0 !important;
-  pointer-events: none !important;
+/* --- GÜNDÜZ MODU DEĞİŞKENLERİ --- */
+:root {
+  --bg-color: #ffffff;
+  --text-color: #1e293b;
+  --sidebar-bg: #f8fafc;
+  --border-color: #e2e8f0;
+  --item-bg: #ffffff;
+  --item-text: #475569;
+  --item-border: #e2e8f0;
+  --item-hover-border: #3b82f6;
+  --hint-bg: #ecfdf5;
+  --hint-text: #059669;
+  --hint-border: #10b981;
 }
 
-/* 2. KRİTİK HAMLE: Rehber aktifken HER ŞEYİ tıklanabilir yap! */
-/* Driver.js bazen body'ye kilit atar, bunu zorla açıyoruz */
-body.driver-active * {
-  pointer-events: auto !important;
+/* --- GECE MODU DEĞİŞKENLERİ --- */
+body.dark-mode {
+  --bg-color: #0f172a;
+  --text-color: #f8fafc;
+  --sidebar-bg: #0f172a;
+  --border-color: #1e293b;
+  --item-bg: #1e293b;
+  --item-text: #cbd5e1;
+  --item-border: #334155;
+  --item-hover-border: #3b82f6;
+  --hint-bg: #064e3b;
+  --hint-text: #6ee7b7;
+  --hint-border: #059669;
 }
 
-/* 3. Konuşma Balonunu (Popover) GÖSTER ve GÜZELLEŞTİR */
-.driver-popover {
-  display: block !important;
+body { background-color: var(--bg-color); color: var(--text-color); }
+
+/* --- SIDEBAR YAPISI --- */
+.sidebar {
+  width: 260px; height: 100%; display: flex; flex-direction: column; padding: 15px; 
+  background-color: var(--sidebar-bg) !important; 
+  border-right: 1px solid var(--border-color) !important;
+  color: var(--text-color); transition: all 0.3s ease;
+}
+.sidebar-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border-color); padding-bottom: 10px; margin-bottom: 15px; }
+.sidebar-header h3 { margin: 0; font-size: 16px; color: inherit; }
+.sidebar-close-btn { background: transparent; border: none; cursor: pointer; font-size: 18px; color: #94a3b8; padding: 4px 8px; border-radius: 4px; }
+.sidebar-close-btn:hover { color: #ef4444; }
+.sidebar-hint { font-size: 12px; margin-bottom: 15px; padding: 10px; border-radius: 6px; border: 1px dashed var(--hint-border); background-color: var(--hint-bg); color: var(--hint-text); }
+.sidebar-content { flex: 1; overflow-y: auto; padding-right: 5px; }
+.sidebar-category { margin-bottom: 25px; }
+.category-title { font-weight: 800; margin-bottom: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.7; }
+.category-items { display: flex; flex-direction: column; gap: 8px; }
+
+/* --- KUTUCUKLAR (ITEM) --- */
+.sidebar-item {
+  position: relative !important; /* İkonu çivilemek için şart */
+  display: flex !important;
+  align-items: center !important;
+  padding: 10px 12px !important;
+  padding-right: 40px !important; /* İkon için sağda boşluk bırak */
+  
+  background-color: var(--item-bg) !important; 
+  border: 1px solid var(--item-border) !important;
+  color: var(--item-text) !important;
+  
+  border-radius: 8px; cursor: grab; font-size: 13px; fontWeight: 500; transition: all 0.2s; user-select: none;
+}
+.sidebar-item:hover { border-color: var(--item-hover-border) !important; color: var(--item-hover-border) !important; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+
+/* --- SORU İŞARETİ (KRİTİK GÖRÜNÜRLÜK DÜZELTMESİ) --- */
+.help-icon {
+  position: absolute !important; 
+  top: 50% !important;
+  right: 10px !important; 
+  transform: translateY(-50%) !important; 
+  z-index: 10 !important;
+  
+  width: 20px !important; height: 20px !important; 
+  background-color: #3b82f6 !important; color: white !important;
+  border-radius: 50% !important; fontSize: 12px !important; 
+  font-weight: bold !important; cursor: help !important; 
+  display: flex; align-items: center; justify-content: center;
+  
+  opacity: 0.7; /* Gözden kaybolmaması için minimum opaklık */
+  transition: all 0.2s;
+}
+
+/* Üstüne gelince parlasın */
+.sidebar-item:hover .help-icon {
   opacity: 1 !important;
-  z-index: 2147483647 !important; /* Mümkün olan en yüksek sayı (En üstte dursun) */
-  pointer-events: auto !important; /* Balondaki butonlara basılabilsin */
-  position: absolute !important; /* Sabit durmasın, elemanla gezsin */
-  
-  /* Adana Usulü Şık Tasarım */
-  background-color: #1e293b !important; /* Koyu Lacivert */
-  color: #f1f5f9 !important; /* Beyaz Yazı */
-  border: 2px solid #f59e0b !important; /* Turuncu Çerçeve */
-  border-radius: 12px !important;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.6) !important;
-  min-width: 280px !important;
-  max-width: 350px !important;
+  transform: translateY(-50%) scale(1.1) !important; 
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
 }
 
-/* Ok işareti (Arrow) Rengi */
-.driver-popover-arrow-side-left.driver-popover-arrow {
-  border-left-color: #f59e0b !important;
+/* Baloncuk */
+.help-tooltip {
+  position: fixed !important; z-index: 9999999 !important; 
+  width: 260px; background: #1e293b !important; color: #f1f5f9 !important; 
+  padding: 12px 15px !important; border-radius: 8px !important; 
+  border: 1px solid #475569 !important; box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important; 
+  font-size: 13px; line-height: 1.5; pointer-events: none; text-align: left;
 }
-.driver-popover-arrow-side-right.driver-popover-arrow {
-  border-right-color: #f59e0b !important;
-}
-.driver-popover-arrow-side-top.driver-popover-arrow {
-  border-top-color: #f59e0b !important;
-}
-.driver-popover-arrow-side-bottom.driver-popover-arrow {
-  border-bottom-color: #f59e0b !important;
-}
+.help-arrow { position: absolute; top: 15px; left: -6px; width: 12px; height: 12px; background-color: #1e293b; transform: rotate(45deg); border-left: 1px solid #475569; border-bottom: 1px solid #475569; }
 
-.driver-popover-title {
-  color: #f59e0b !important;
-  font-size: 16px !important;
-  font-weight: bold !important;
-  margin-bottom: 8px !important;
-}
 
-.driver-popover-description {
-  color: #e2e8f0 !important;
-  font-size: 13px !important;
-  line-height: 1.5 !important;
-}
+/* --- HEADER & TABS STİLLERİ --- */
+.app-header { background-color: var(--sidebar-bg) !important; border-bottom: 1px solid var(--border-color) !important; transition: all 0.3s; }
+.tab-item { background-color: var(--item-bg) !important; color: var(--item-text) !important; border: 2px solid var(--item-border) !important; }
+.tab-item.active { background-color: #3b82f6 !important; color: white !important; border-color: #3b82f6 !important; }
+.add-tab-btn { background-color: var(--item-bg) !important; color: var(--item-text) !important; border: 2px dashed var(--item-border) !important; }
 
-/* 4. Vurgulanan Kutunun Etrafına Çerçeve (Manuel Vurgu) */
-/* Perde olmadığı için nereye bakacağını biz çerçeveyle gösterelim */
-.driver-active-element {
-  outline: 4px dashed #f59e0b !important;
-  outline-offset: 4px;
-  z-index: 5000 !important;
-}
+/* --- REACT FLOW KONTROLLERİ (KARANLIK MOD) --- */
+body.dark-mode .react-flow__controls { background-color: #1e293b !important; border: 1px solid #334155 !important; }
+body.dark-mode .react-flow__controls-button { background-color: #1e293b !important; border-bottom: 1px solid #334155 !important; }
+body.dark-mode .react-flow__controls-button svg { fill: #e2e8f0 !important; }
+body.dark-mode .react-flow__minimap { background-color: #1e293b !important; border: 1px solid #334155 !important; }
+body.dark-mode .react-flow__minimap-mask { fill: rgba(0, 0, 0, 0.4) !important; }
+body.dark-mode .react-flow__minimap-node { fill: #475569 !important; }
 
-/* --- REACT FLOW SAHNESİ --- */
-.react-flow__pane {
-  cursor: grab;
-  pointer-events: auto !important;
-  z-index: 1 !important;
-}
-
-.reactflow-wrapper {
-  position: relative;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
-}
-
-/* --- SIDEBAR --- */
-/* Sidebar'ı korumaya alıyoruz */
-#sidebar-panel {
-  position: relative;
-  z-index: 10000 !important;
-  pointer-events: auto !important;
-}
-
-/* --- KENAR BUTONLARI (X) --- */
-.edgebutton {
-  pointer-events: auto !important;
-  cursor: pointer !important;
-  z-index: 2000 !important;
-}
-/* ... (Önceki ayarlar aynı) ... */
-
-/* --- VURGULANAN ÖĞE İÇİN STİL --- */
-.driver-active-element {
-  /* Çerçeve: Altını çizmek yerine etrafını parlak turuncu ile çeviriyoruz */
-  outline: 3px solid #f59e0b !important;
-  outline-offset: 4px;
-  
-  /* Hafif arka plan parlaması */
-  box-shadow: 0 0 15px rgba(245, 158, 11, 0.6) !important;
-  
-  /* Önemli: Etkileşimi engellememesi için */
-  pointer-events: auto !important; 
-  z-index: 5000 !important;
-  position: relative !important;
-}
-.driver-active-element {
-  outline: 4px solid #f59e0b !important;
-  outline-offset: 4px;
-  z-index: 5000 !important;
-  position: relative !important;
-  box-shadow: 0 0 20px rgba(245, 158, 11, 0.6) !important;
-  pointer-events: auto !important; /* Tıklanabilsin */
+/* --- REHBER & DİĞER --- */
+.driver-overlay, .driver-stage, #driver-page-overlay { display: none !important; }
+.driver-popover { display: block !important; z-index: 200000 !important; pointer-events: auto !important; background-color: #1e293b !important; color: #e2e8f0 !important; border: 2px solid #f59e0b !important; border-radius: 12px; }
+.react-flow__pane { cursor: grab; pointer-events: auto !important; z-index: 1; }
+textarea { background-color: #020617 !important; color: #a5b4fc !important; border: 1px solid #1e293b !important; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+body.dark-mode ::-webkit-scrollbar-thumb { background: #334155; }
+.no-select-on-dblclick {
+    /* Metin seçimini tamamen engeller */
+    user-select: none;
+    -webkit-user-select: none; /* Chrome, Safari */
+    -moz-user-select: none; /* Firefox */
+    -ms-user-select: none; /* IE/Edge */
 }
