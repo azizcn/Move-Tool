@@ -4,8 +4,6 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-// Driver.js importları (Rehber için gerekliydi, silindi)
-
 import StructNode from './StructNode';
 import FunctionNode from './FunctionNode';
 import InitNode from './InitNode';
@@ -17,8 +15,7 @@ import Sidebar from './Sidebar';
 import ThemeToggle from './ThemeToggle';
 import { generateMoveCode, generateMoveToml } from './moveGenerator';
 
-// API KEY (Değişken ismi aynı kalmalı)
-const GEMINI_API_KEY = "AIzaSyBybsTiBB7x5ZnywAiIva0oV0wNO95iHSA"; 
+// DİKKAT: API KEY ARTIK BURADA DEĞİL! GÜVENLİK İÇİN SERVER TARAFINA TAŞINDI.
 
 const nodeTypesRaw = { structNode: StructNode, functionNode: FunctionNode, initNode: InitNode };
 const edgeTypesRaw = { buttonEdge: ButtonEdge };
@@ -35,14 +32,13 @@ const getEdgeColor = (type) => {
 };
 const initialNodes = [
     {
-        id: 'module-root', // KRİTİK ID
-        type: 'default', // Veya custom bir type
+        id: 'module-root', 
+        type: 'default', 
         position: { x: -100, y: -100 },
-        data: { label: 'my_coin', type: 'moduleName' }, // type: moduleName ekledik
-        hidden: true, // Sahneden gizle
+        data: { label: 'my_coin', type: 'moduleName' }, 
+        hidden: true, 
     }
 ];
-// driverObj kaldırıldı
 
 function MoveSketchBuilder() {
     const reactFlowInstance = useReactFlow();
@@ -60,9 +56,6 @@ function MoveSketchBuilder() {
     const [generatedCode, setGeneratedCode] = useState("");
     const [generatedToml, setGeneratedToml] = useState("");
     
-    // Silindi: [isRunning, setIsRunning] state'i silindi.
-    
-    // Rehber state'i kaldırıldı
     const [pendingNode, setPendingNode] = useState(null);
     const [toastMsg, setToastMsg] = useState(null);
     const [isAiLoading, setIsAiLoading] = useState(false); 
@@ -72,82 +65,64 @@ function MoveSketchBuilder() {
 
     const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
 
-    // --- REHBER KONTROLLERİ useEffect'i kaldırıldı ---
-    
-    // --- 🔥 KOD IMPORT FONKSİYONU ---
+   // --- 🔥 KOD IMPORT FONKSİYONU (SERVERLESS BAĞLANTILI) ---
     const handleCodeImport = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
-        if (GEMINI_API_KEY === "A") {
-            alert("🚨 HATA: Lütfen Koda YENİ ve GEÇERLİ API Anahtarınızı yapıştırın!");
-            return;
-        }
 
         const reader = new FileReader();
         reader.onload = async (ev) => {
             const code = ev.target.result;
             setIsAiLoading(true);
-            showToast("🤖 Yapay Zeka kodu inceliyor...");
+            showToast("🧠 DeepSeek kodu inceliyor (Server)...");
 
             try {
-                const prompt = `
-            You are an expert in Sui Move and React Flow visualization. Analyze the following Move code and convert it into a valid JSON structure for a React Flow graph. Your goal is to recreate all necessary content and connections.
-            
-            CODE:
-            ${code}
-
-            RULES:
-            1. Identify all 'struct' definitions. For these, set type='structNode'. Extract fields and parameters (name/type) into the 'data.fields' array.
-            2. Identify all 'fun' definitions (ignore 'init'). For these, set type='functionNode'. Extract parameters (name/type) into the 'data.params' array.
-            3. FRAMEWORK CRITICAL TYPES: If 'TreasuryCap' or 'Coin' is found in any function signature, you MUST create a corresponding node for it (type='structNode') with data.label as the type name, regardless of whether it is defined as a struct in the code.
-            4. CONNECTION LOGIC (EDGES): You must analyze parameter types and code flow to infer the data flow.
-                - CRITICAL MINT/BURN: For 'coin::mint' or 'coin::burn' functions, the 'TreasuryCap' node must connect to the function node's 'param-0' handle (assuming 'cap' is param 0).
-                - Generic Flow: Create an edge from a Struct Node (Source) to a Function Node (Target) if the Function takes that Struct type as a parameter.
-            5. Layout: Structs on x:100, Functions on x:600.
-            6. Return ONLY raw JSON. Do not include any markdown (like \`\`\`json) or conversational text.
-            `;
-
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                // Kendi sunucumuza istek atıyoruz
+                const response = await fetch("/api/analyze", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                    body: JSON.stringify({ code })
                 });
 
+                // Hata kontrolü (JSON parse hatasını önlemek için text olarak alıp kontrol ediyoruz)
+                const textResponse = await response.text();
+                
                 if (!response.ok) {
-                    const errorResult = await response.json();
-                    throw new Error(`API Hatası (HTTP ${response.status}): ${errorResult.error?.message || 'Bilinmeyen Hata'}`);
+                    throw new Error(`Server Hatası (${response.status}): ${textResponse}`);
                 }
 
-                const result = await response.json();
-                
-                if (!result.candidates || result.candidates.length === 0 || !result.candidates[0].content || !result.candidates[0].content.parts || result.candidates[0].content.parts.length === 0) {
-                    throw new Error("AI, yapılandırılmış bir cevap döndüremedi.");
+                // DeepSeek'ten gelen JSON'u ayrıştır
+                let resultData;
+                try {
+                    resultData = JSON.parse(textResponse);
+                } catch (jsonErr) {
+                    throw new Error("Server'dan gelen yanıt JSON değil: " + textResponse.substring(0, 50) + "...");
+                }
+
+                if (!resultData.choices || !resultData.choices[0].message.content) {
+                    throw new Error("AI boş cevap döndürdü.");
                 }
                 
-                let textResponse = result.candidates[0].content.parts[0].text;
+                let aiContent = resultData.choices[0].message.content;
+                aiContent = aiContent.replace(/```json/g, '').replace(/```/g, '').trim();
                 
-                textResponse = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-                
-                const parsedData = JSON.parse(textResponse);
-
-                // AI'dan gelen veriye otomatik bağlantıları ekle
+                const parsedData = JSON.parse(aiContent);
                 const autoEdges = createEdgesFromNodes(parsedData.nodes);
                 const finalEdges = [...parsedData.edges, ...autoEdges];
 
                 if (parsedData.nodes && parsedData.nodes.length > 0) {
-                    if(confirm(`🤖 AI: "${parsedData.nodes.length} yapı ve ${finalEdges.length} bağlantı buldum."\nİçe aktarılsın mı?`)) {
+                    if(confirm(`🧠 DeepSeek: "${parsedData.nodes.length} yapı buldum."\nİçe aktarılsın mı?`)) {
                         setNodes(parsedData.nodes);
-                        setEdges(finalEdges); // Otomatik bağlantılar dahil edildi
-                        showToast("✅ AI: Sahne kuruldu!");
+                        setEdges(finalEdges); 
+                        showToast("✅ Sahne kuruldu!");
                     }
                 } else {
                     alert("AI, kodda beklenen yapıları bulamadı.");
                 }
 
             } catch (err) {
-                console.error("AI/JSON Hatası:", err);
-                alert("🚨 KRİTİK HATA: " + err.message + "\nLütfen API Key'in geçerli olduğundan ve hesap limitini aşmadığınızdan emin olun.");
+                console.error("AI Hatası:", err);
+                alert("🚨 HATA: " + err.message);
             } finally {
                 setIsAiLoading(false);
             }
@@ -163,18 +138,12 @@ function MoveSketchBuilder() {
         setModules(p => p.map(m => m.id === activeModuleId ? { ...m, nodes: cn, edges: ce } : m)); 
     };
     const clearCanvas = () => {
-        // Emin misin sorusuyla kazaların önüne geçelim
         if (!confirm("⚠️ SAHNEYİ SİLMEK ÜZERESİN. Tüm düğüm ve bağlantıları silmek istediğine emin misin?")) {
             return;
         }
-
-        // 1. Aktif modülün kaydedilmiş verilerini sıfırla
         setModules(p => p.map(m => m.id === activeModuleId ? { ...m, nodes: initialNodes, edges: [] } : m)); 
-        
-        // 2. Sahnede görünen düğüm ve bağlantı state'lerini sıfırla
-        setNodes(initialNodes); // Sadece root düğümünü bırak
+        setNodes(initialNodes);
         setEdges([]);
-        
         showToast("🧹 Sahne Temizlendi.");
     };
     const switchModule = (tid) => { 
@@ -182,7 +151,7 @@ function MoveSketchBuilder() {
         syncCurrentModule(); 
         const tm = modules.find(m => m.id === tid); 
         if (tm) { 
-            setNodes(tm.nodes || initialNodes); // Modül geçişinde initialNodes'u kullan
+            setNodes(tm.nodes || initialNodes); 
             setEdges(tm.edges || []); 
             setActiveModuleId(tid); 
         } 
@@ -190,7 +159,6 @@ function MoveSketchBuilder() {
     const addNewModule = () => { 
         syncCurrentModule(); 
         const nid = `mod-${Date.now()}`; 
-        // Yeni modül eklerken de initialNodes ile başla
         setModules(p => [...p, { id: nid, name: `module_${modules.length + 1}`, nodes: initialNodes, edges: [] }]); 
         setNodes(initialNodes); 
         setEdges([]); 
@@ -238,18 +206,14 @@ function MoveSketchBuilder() {
         r.readAsText(f); 
     };
     
-const handleExport = () => { 
-    const cm = modules.find(m => m.id === activeModuleId); 
-    const c = generateMoveCode(cm.name, nodes, edges); 
-    const t = generateMoveToml(cm.name); 
-    setGeneratedCode(c); 
-    setGeneratedToml(t); 
-    setShowCode(true); 
-}; 
-
-// 🔥 AI SİMÜLASYON FONKSİYONU SİLİNDİ 🔥
-// runSimulation fonksiyonu silindi.
-
+    const handleExport = () => { 
+        const cm = modules.find(m => m.id === activeModuleId); 
+        const c = generateMoveCode(cm.name, nodes, edges); 
+        const t = generateMoveToml(cm.name); 
+        setGeneratedCode(c); 
+        setGeneratedToml(t); 
+        setShowCode(true); 
+    }; 
 
     const addStruct = useCallback(() => setNodes(n => n.concat({ 
         id: getId('s'), 
@@ -259,13 +223,7 @@ const handleExport = () => {
             label: 'NewStruct', 
             customTitle: 'Yeni Veri 📦', 
             fields: [{ name: 'id', type: 'UID' }],
-            // ABILITIES varsayılan değerlerle eklendi
-            abilities: {
-                key: true,
-                store: true,
-                drop: false,
-                copy: false,
-            }
+            abilities: { key: true, store: true, drop: false, copy: false }
         } 
     })), [setNodes]);
     const addFunction = useCallback(() => setNodes(n => n.concat({ id: getId('f'), type: 'functionNode', position: { x: 500, y: 100 }, data: { label: 'new_action', customTitle: 'Yeni İşlem ⚡', params: [{ name: 'ctx', type: '&mut TxContext' }] } })), [setNodes]);
@@ -302,13 +260,11 @@ const handleExport = () => {
         }
     }, [reactFlowInstance, setNodes, setEdges]);
     
-    // 💥 DÜZELTME: onSidebarSelect ve onPaneClick Mekanizması Devre Dışı
     const onSidebarSelect = useCallback(() => { 
         showToast("⚠️ Sidebar'dan ekleme özelliği devre dışı. Lütfen sağ üstteki butonları kullanın.");
     }, [showToast]);
 
     const onPaneClick = useCallback((event) => { 
-        // pendingNode kontrolü sayesinde onSidebarSelect çalışmadığı sürece bu fonksiyon pasif kalacaktır.
         if (!pendingNode) return; 
         const position = reactFlowInstance.project({ x: event.clientX, y: event.clientY - 40 }); 
         const prefix = pendingNode.type === 'structNode' ? 's' : (pendingNode.type === 'initNode' ? 'i' : 'f'); 
@@ -316,9 +272,7 @@ const handleExport = () => {
         setNodes((nds) => nds.concat(newNode)); setPendingNode(null); 
         document.body.style.cursor = 'default'; 
     }, [reactFlowInstance, pendingNode, setNodes]);
-    // 💥 DÜZELTME SONU 💥
 
-    // --- KRİTİK: BAĞLANTI OLUŞTURMA MANTIĞI (SİLME DÜZELTİLDİ) ---
     const createEdgesFromNodes = useCallback((nodes) => {
         const newEdges = [];
         const getStructs = (label) => nodes.filter(n => n.type === 'structNode' && n.data.label === label);
@@ -328,7 +282,7 @@ const handleExport = () => {
         const transferFuncs = getFuncs('transfer::transfer');
         const treasuryCaps = getStructs('TreasuryCap');
 
-        // 1. MINT -> TREASURYCAP (Yetkilendirme)
+        // MINT -> TREASURYCAP
         mintFuncs.forEach(mintNode => {
             if (treasuryCaps.length > 0) {
                 const capNode = treasuryCaps[0];
@@ -338,13 +292,13 @@ const handleExport = () => {
                     source: capNode.id, sourceHandle: 'obj-main',
                     target: mintNode.id, targetHandle: 'param-0',
                     type: 'buttonEdge', animated: true, 
-                    data: { path: 'smoothstep' }, // Silme için gerekli data objesi
+                    data: { path: 'smoothstep' }, 
                     style: { stroke: getEdgeColor(type), strokeWidth: 2 } 
                 });
             }
         });
         
-        // 2. MINT -> TRANSFER (Akış)
+        // MINT -> TRANSFER
         mintFuncs.forEach(mintNode => {
             transferFuncs.forEach(transferNode => {
                 const type = 'Coin';
@@ -353,13 +307,13 @@ const handleExport = () => {
                     source: mintNode.id, sourceHandle: 'return-val',
                     target: transferNode.id, targetHandle: 'param-0',
                     type: 'buttonEdge', animated: true, 
-                    data: { path: 'smoothstep' }, // Silme için gerekli data objesi
+                    data: { path: 'smoothstep' },
                     style: { stroke: getEdgeColor(type), strokeWidth: 2 }
                 });
             });
         });
 
-        // 3. NFT MINT -> TRANSFER (NFT Akışı)
+        // NFT MINT -> TRANSFER
         getFuncs('nft::mint').forEach(nftMintNode => {
             transferFuncs.forEach(transferNode => {
                 const type = 'SimpleNFT';
@@ -368,7 +322,7 @@ const handleExport = () => {
                     source: nftMintNode.id, sourceHandle: 'return-val',
                     target: transferNode.id, targetHandle: 'param-0',
                     type: 'buttonEdge', animated: true, 
-                    data: { path: 'smoothstep' }, // Silme için gerekli data objesi
+                    data: { path: 'smoothstep' },
                     style: { stroke: getEdgeColor(type), strokeWidth: 2 }
                 });
             });
@@ -378,7 +332,6 @@ const handleExport = () => {
     }, [nodes]);
 
     const onConnect = useCallback((params) => {
-        // Rehber kontrolü kaldırıldı
         const sourceNode = reactFlowInstance.getNode(params.source);
         let dataType = 'unknown';
         if (sourceNode) {
@@ -394,7 +347,7 @@ const handleExport = () => {
             ...params, 
             type: 'buttonEdge', 
             animated: true, 
-            data: { path: 'smoothstep' }, // KRİTİK: BURADA YUMUŞAK YOL ZORLANIYOR
+            data: { path: 'smoothstep' },
             style: { stroke: color, strokeWidth: 2 } 
         }, eds));
     }, [reactFlowInstance, setEdges]);
@@ -425,14 +378,13 @@ const handleExport = () => {
                 edgeTypes={edgeTypes}
                 isValidConnection={() => true} 
                 
-                // 💥 DÜZELTİLMİŞ BÖLÜM 💥
                 onNodeDoubleClick={(e, node) => {
-                // Sadece Modül Adı Düğümünü veya yeni eklenen Struct/Function düğümlerini hedefle
+                    e.preventDefault(); e.stopPropagation();
                 if (
-                    node.id === 'module-root' || // <-- Yeni eklenen ID
-                    node.type === 'structNode' || // <-- Yeni struct'ları düzenlemek için
-                    node.type === 'functionNode' || // <-- Yeni fonksiyonları düzenlemek için
-                    node.type === 'initNode' // <-- init düğümlerini düzenlemek için
+                    node.id === 'module-root' ||
+                    node.type === 'structNode' ||
+                    node.type === 'functionNode' ||
+                    node.type === 'initNode'
                 ) {
                     console.log("Düzenleme Tetiklendi:", node.id); 
                     setEditingNode(node);
@@ -444,15 +396,11 @@ const handleExport = () => {
             >
                         <Controls /><MiniMap style={{ height: 100, width: 150 }} /><Background variant="dots" gap={12} size={1} />
                         
-                        {/* --- BUTONLAR --- */}
                         <Panel position="top-right" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', padding: '10px' }}>
-                            {/* Rehber butonları kaldırıldı */}
-                            
                             <div id="file-btns" style={{ display: 'flex', gap: '5px' }}>
                             <button onClick={() => fileInputRef.current.click()} style={{...btnStyle('#334155')}} title="Proje Aç">📂</button>
                             <button onClick={saveProject} style={{...btnStyle('#334155')}} title="Kaydet">💾</button>
                             <button onClick={() => codeInputRef.current.click()} style={{...btnStyle('#6366f1')}} title="Kod Oku">📥 Kod (AI)</button>
-                            {/* 💥 TEMİZLEME BUTONU 💥 */}
                             <button onClick={clearCanvas} style={btnStyle('#ef4444')} title="Sahneyi Temizle">🧹</button>
                             </div>
 
@@ -462,7 +410,6 @@ const handleExport = () => {
                             </div>
 
                             <button onClick={handleExport} style={btnStyle('#10b981')}>🚀 Export</button>
-                            {/* SİLİNDİ: <button onClick={runSimulation} disabled={isRunning} style={btnStyle(isRunning ? '#fbbf24' : '#f59e0b')}>{isRunning ? '⏳' : '▶️ Test'}</button> */}
                         </Panel>
                         
                         <Panel position="top-left" style={{ padding: '10px' }}>
@@ -472,7 +419,6 @@ const handleExport = () => {
                     </ReactFlow>
                 </div>
             </div>
-            {/* Modallar, Toast, vs. */}
             {toastMsg && (
                 <div style={{ 
                     position: 'fixed', bottom: '20px', left: '20px', zIndex: 999999, 
